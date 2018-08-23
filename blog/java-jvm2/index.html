@@ -1,0 +1,551 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/><title>浅谈 node-jvm(2) | MartinDelophy</title><meta name="viewport" content="width=640"/><link rel="stylesheet" href="/style.css"/></head><body><header><section><a class="nav-home" href="/">MartinDelophy</a><nav><a href="/blog">技术博客</a><a href="/#">个人简历</a><a href="/#">图标3</a><a href="/#" class="active">图标4</a><a href="/#">图标5</a></nav><div class="algolia-search-wrapper"><input type="text" id="algolia-search-input" placeholder="请搜索..."/></div></section></header><section><div class="documentationContent"><div class="inner-content"><h1>浅谈 node-jvm(2)</h1><p>2018-5-15 by MartinDelophy</p><hr/><div><p>上回，我们很简单的对node-jvm进行了一定的分析，但问题还是停留在表面，仅仅只是介绍了node 里面的一些特点，和java并无很多的关系，今天让我们接着来讲后续的内容。
+要想很清晰的知道后续的内容，我们首先要对java class类文件做一定的了解。
+我想在网上这样的文章算是比较多了，我推荐几个链接可以去看看
+1.<a href="https://blog.csdn.net/u010425776/article/details/51245055">https://blog.csdn.net/u010425776/article/details/51245055</a>
+2.<a href="https://www.cnblogs.com/Qian123/p/5707562.html">https://www.cnblogs.com/Qian123/p/5707562.html</a>
+3.<a href="https://blog.csdn.net/u013309870/article/details/72975536">https://blog.csdn.net/u013309870/article/details/72975536</a>
+4.<a href="http://www.blogjava.net/DLevin/archive/2011/09/05/358033.html">http://www.blogjava.net/DLevin/archive/2011/09/05/358033.html</a>
+5.<a href="http://www.blogjava.net/DLevin/archive/2011/09/05/358034.html">http://www.blogjava.net/DLevin/archive/2011/09/05/358034.html</a></p><p>看了上面几个文章之后，我们开始实战来分析一下下面的代码
+首先看到的是用来针对fib 进行计算的java文件</p><p>Main.java</p><pre class="prism language-undefined"><span class="keyword">public</span> <span class="keyword">class</span> <span class="class-name">Main</span> <span class="punctuation">{</span>
+
+    <span class="keyword">public</span> <span class="keyword">static</span> long <span class="function">fib</span><span class="punctuation">(</span>int n<span class="punctuation">)</span> <span class="punctuation">{</span>
+        <span class="keyword">if</span> <span class="punctuation">(</span>n <span class="operator">&lt;=</span> <span class="number">1</span><span class="punctuation">)</span>
+            <span class="keyword">return</span> n<span class="punctuation">;</span>
+        <span class="keyword">return</span> <span class="function">fib</span><span class="punctuation">(</span>n <span class="operator">-</span> <span class="number">1</span><span class="punctuation">)</span> <span class="operator">+</span> <span class="function">fib</span><span class="punctuation">(</span>n <span class="operator">-</span> <span class="number">2</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    <span class="punctuation">}</span>
+
+    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="function">main</span><span class="punctuation">(</span>String<span class="punctuation">[</span><span class="punctuation">]</span> args<span class="punctuation">)</span> <span class="punctuation">{</span>
+        <span class="keyword">if</span> <span class="punctuation">(</span>args<span class="punctuation">.</span>length <span class="operator">==</span> <span class="number">0</span><span class="punctuation">)</span> <span class="punctuation">{</span>
+            System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">print</span><span class="punctuation">(</span><span class="string">&quot;help: java Fibonacci {Number}&quot;</span><span class="punctuation">)</span><span class="punctuation">;</span>
+            <span class="keyword">return</span><span class="punctuation">;</span>
+        <span class="punctuation">}</span>
+
+        int N <span class="operator">=</span> Integer<span class="punctuation">.</span><span class="function">parseInt</span><span class="punctuation">(</span>args<span class="punctuation">[</span><span class="number">0</span><span class="punctuation">]</span><span class="punctuation">)</span><span class="punctuation">;</span>
+
+        long start <span class="operator">=</span> System<span class="punctuation">.</span><span class="function">currentTimeMillis</span><span class="punctuation">(</span><span class="punctuation">)</span><span class="punctuation">;</span>
+        System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">format</span><span class="punctuation">(</span><span class="string">&quot;Fibonacci from 1 to %s:\n&quot;</span><span class="punctuation">,</span> N<span class="punctuation">)</span><span class="punctuation">;</span>
+        <span class="keyword">for</span> <span class="punctuation">(</span>int i <span class="operator">=</span> <span class="number">1</span><span class="punctuation">;</span> i <span class="operator">&lt;=</span> N<span class="punctuation">;</span> i<span class="operator">++</span><span class="punctuation">)</span> <span class="punctuation">{</span>
+            System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">println</span><span class="punctuation">(</span>i <span class="operator">+</span> <span class="string">&quot;: &quot;</span> <span class="operator">+</span> <span class="function">fib</span><span class="punctuation">(</span>i<span class="punctuation">)</span><span class="punctuation">)</span><span class="punctuation">;</span>
+        <span class="punctuation">}</span>
+        long stop <span class="operator">=</span> System<span class="punctuation">.</span><span class="function">currentTimeMillis</span><span class="punctuation">(</span><span class="punctuation">)</span><span class="punctuation">;</span>
+        System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">println</span><span class="punctuation">(</span><span class="string">&quot;time: &quot;</span> <span class="operator">+</span> <span class="punctuation">(</span>stop <span class="operator">-</span> start<span class="punctuation">)</span> <span class="operator">+</span> <span class="string">&quot;ms&quot;</span><span class="punctuation">)</span><span class="punctuation">;</span>
+
+        System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">println</span><span class="punctuation">(</span><span class="string">&quot;done.&quot;</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    <span class="punctuation">}</span>
+<span class="punctuation">}</span></pre><p>该部分代码，主要是实现了最基本的fib 功能，并且调用。</p><p>那么接下来我用make 生成Main.class文件,然后通过
+javap -v -verbose Main 分析一下改该类文件中的内容，内容如下：</p><pre class="prism language-undefined">Last modified May <span class="number">7</span><span class="punctuation">,</span> <span class="number">2018</span><span class="punctuation">;</span> size <span class="number">1286</span> bytes
+  MD5 checksum 115352bb394b31575a6288f7bdf82f35
+  Compiled <span class="keyword">from</span> <span class="string">&quot;Main.java&quot;</span>
+<span class="keyword">public</span> <span class="keyword">class</span> <span class="class-name">Main</span>
+  minor version<span class="punctuation">:</span> <span class="number">0</span>
+  major version<span class="punctuation">:</span> <span class="number">52</span>
+  flags<span class="punctuation">:</span> ACC_PUBLIC<span class="punctuation">,</span> ACC_SUPER
+Constant pool<span class="punctuation">:</span>
+   #<span class="number">1</span> <span class="operator">=</span> Methodref          #<span class="number">9</span><span class="punctuation">.</span>#<span class="number">35</span>         <span spellcheck="true" class="comment">// java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span>
+   #<span class="number">2</span> <span class="operator">=</span> Methodref          #<span class="number">23</span><span class="punctuation">.</span>#<span class="number">36</span>        <span spellcheck="true" class="comment">// Main.fib:(I)J</span>
+   #<span class="number">3</span> <span class="operator">=</span> Fieldref           #<span class="number">37</span><span class="punctuation">.</span>#<span class="number">38</span>        <span spellcheck="true" class="comment">// java/lang/System.out:Ljava/io/PrintStream;</span>
+   #<span class="number">4</span> <span class="operator">=</span> String             #<span class="number">39</span>            <span spellcheck="true" class="comment">// help: java Fibonacci {Number}</span>
+   #<span class="number">5</span> <span class="operator">=</span> Methodref          #<span class="number">40</span><span class="punctuation">.</span>#<span class="number">41</span>        <span spellcheck="true" class="comment">// java/io/PrintStream.print:(Ljava/lang/String;)V</span>
+   #<span class="number">6</span> <span class="operator">=</span> Methodref          #<span class="number">42</span><span class="punctuation">.</span>#<span class="number">43</span>        <span spellcheck="true" class="comment">// java/lang/Integer.parseInt:(Ljava/lang/String;)I</span>
+   #<span class="number">7</span> <span class="operator">=</span> Methodref          #<span class="number">37</span><span class="punctuation">.</span>#<span class="number">44</span>        <span spellcheck="true" class="comment">// java/lang/System.currentTimeMillis:()J</span>
+   #<span class="number">8</span> <span class="operator">=</span> String             #<span class="number">45</span>            <span spellcheck="true" class="comment">// Fibonacci from 1 to %s:\n</span>
+   #<span class="number">9</span> <span class="operator">=</span> Class              #<span class="number">46</span>            <span spellcheck="true" class="comment">// java/lang/Object</span>
+  #<span class="number">10</span> <span class="operator">=</span> Methodref          #<span class="number">42</span><span class="punctuation">.</span>#<span class="number">47</span>        <span spellcheck="true" class="comment">// java/lang/Integer.valueOf:(I)Ljava/lang/Integer;</span>
+  #<span class="number">11</span> <span class="operator">=</span> Methodref          #<span class="number">40</span><span class="punctuation">.</span>#<span class="number">48</span>        <span spellcheck="true" class="comment">// java/io/PrintStream.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/io/PrintStream;</span>
+  #<span class="number">12</span> <span class="operator">=</span> Class              #<span class="number">49</span>            <span spellcheck="true" class="comment">// java/lang/StringBuilder</span>
+  #<span class="number">13</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">35</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.&quot;&lt;init&gt;&quot;:()V</span>
+  #<span class="number">14</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">50</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.append:(I)Ljava/lang/StringBuilder;</span>
+  #<span class="number">15</span> <span class="operator">=</span> String             #<span class="number">51</span>            <span spellcheck="true" class="comment">// :</span>
+  #<span class="number">16</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">52</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+  #<span class="number">17</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">53</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.append:(J)Ljava/lang/StringBuilder;</span>
+  #<span class="number">18</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">54</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.toString:()Ljava/lang/String;</span>
+  #<span class="number">19</span> <span class="operator">=</span> Methodref          #<span class="number">40</span><span class="punctuation">.</span>#<span class="number">55</span>        <span spellcheck="true" class="comment">// java/io/PrintStream.println:(Ljava/lang/String;)V</span>
+  #<span class="number">20</span> <span class="operator">=</span> String             #<span class="number">56</span>            <span spellcheck="true" class="comment">// time:</span>
+  #<span class="number">21</span> <span class="operator">=</span> String             #<span class="number">57</span>            <span spellcheck="true" class="comment">// ms</span>
+  #<span class="number">22</span> <span class="operator">=</span> String             #<span class="number">58</span>            <span spellcheck="true" class="comment">// done.</span>
+  #<span class="number">23</span> <span class="operator">=</span> Class              #<span class="number">59</span>            <span spellcheck="true" class="comment">// Main</span>
+  #<span class="number">24</span> <span class="operator">=</span> Utf8               <span class="operator">&lt;</span>init<span class="operator">&gt;</span>
+  #<span class="number">25</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span><span class="punctuation">)</span>V
+  #<span class="number">26</span> <span class="operator">=</span> Utf8               Code
+  #<span class="number">27</span> <span class="operator">=</span> Utf8               LineNumberTable
+  #<span class="number">28</span> <span class="operator">=</span> Utf8               fib
+  #<span class="number">29</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>I<span class="punctuation">)</span>J
+  #<span class="number">30</span> <span class="operator">=</span> Utf8               StackMapTable
+  #<span class="number">31</span> <span class="operator">=</span> Utf8               main
+  #<span class="number">32</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span><span class="punctuation">[</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>V
+  #<span class="number">33</span> <span class="operator">=</span> Utf8               SourceFile
+  #<span class="number">34</span> <span class="operator">=</span> Utf8               Main<span class="punctuation">.</span>java
+  #<span class="number">35</span> <span class="operator">=</span> NameAndType        #<span class="number">24</span><span class="punctuation">:</span>#<span class="number">25</span>        <span spellcheck="true" class="comment">// &quot;&lt;init&gt;&quot;:()V</span>
+  #<span class="number">36</span> <span class="operator">=</span> NameAndType        #<span class="number">28</span><span class="punctuation">:</span>#<span class="number">29</span>        <span spellcheck="true" class="comment">// fib:(I)J</span>
+  #<span class="number">37</span> <span class="operator">=</span> Class              #<span class="number">60</span>            <span spellcheck="true" class="comment">// java/lang/System</span>
+  #<span class="number">38</span> <span class="operator">=</span> NameAndType        #<span class="number">61</span><span class="punctuation">:</span>#<span class="number">62</span>        <span spellcheck="true" class="comment">// out:Ljava/io/PrintStream;</span>
+  #<span class="number">39</span> <span class="operator">=</span> Utf8               help<span class="punctuation">:</span> java Fibonacci <span class="punctuation">{</span>Number<span class="punctuation">}</span>
+  #<span class="number">40</span> <span class="operator">=</span> Class              #<span class="number">63</span>            <span spellcheck="true" class="comment">// java/io/PrintStream</span>
+  #<span class="number">41</span> <span class="operator">=</span> NameAndType        #<span class="number">64</span><span class="punctuation">:</span>#<span class="number">65</span>        <span spellcheck="true" class="comment">// print:(Ljava/lang/String;)V</span>
+  #<span class="number">42</span> <span class="operator">=</span> Class              #<span class="number">66</span>            <span spellcheck="true" class="comment">// java/lang/Integer</span>
+  #<span class="number">43</span> <span class="operator">=</span> NameAndType        #<span class="number">67</span><span class="punctuation">:</span>#<span class="number">68</span>        <span spellcheck="true" class="comment">// parseInt:(Ljava/lang/String;)I</span>
+  #<span class="number">44</span> <span class="operator">=</span> NameAndType        #<span class="number">69</span><span class="punctuation">:</span>#<span class="number">70</span>        <span spellcheck="true" class="comment">// currentTimeMillis:()J</span>
+  #<span class="number">45</span> <span class="operator">=</span> Utf8               Fibonacci <span class="keyword">from</span> <span class="number">1</span> to <span class="operator">%</span>s<span class="punctuation">:</span>\n
+  #<span class="number">46</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>lang<span class="operator">/</span>Object
+  #<span class="number">47</span> <span class="operator">=</span> NameAndType        #<span class="number">71</span><span class="punctuation">:</span>#<span class="number">72</span>        <span spellcheck="true" class="comment">// valueOf:(I)Ljava/lang/Integer;</span>
+  #<span class="number">48</span> <span class="operator">=</span> NameAndType        #<span class="number">73</span><span class="punctuation">:</span>#<span class="number">74</span>        <span spellcheck="true" class="comment">// format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/io/PrintStream;</span>
+  #<span class="number">49</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>lang<span class="operator">/</span>StringBuilder
+  #<span class="number">50</span> <span class="operator">=</span> NameAndType        #<span class="number">75</span><span class="punctuation">:</span>#<span class="number">76</span>        <span spellcheck="true" class="comment">// append:(I)Ljava/lang/StringBuilder;</span>
+  #<span class="number">51</span> <span class="operator">=</span> Utf8               <span class="punctuation">:</span>
+  #<span class="number">52</span> <span class="operator">=</span> NameAndType        #<span class="number">75</span><span class="punctuation">:</span>#<span class="number">77</span>        <span spellcheck="true" class="comment">// append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+  #<span class="number">53</span> <span class="operator">=</span> NameAndType        #<span class="number">75</span><span class="punctuation">:</span>#<span class="number">78</span>        <span spellcheck="true" class="comment">// append:(J)Ljava/lang/StringBuilder;</span>
+  #<span class="number">54</span> <span class="operator">=</span> NameAndType        #<span class="number">79</span><span class="punctuation">:</span>#<span class="number">80</span>        <span spellcheck="true" class="comment">// toString:()Ljava/lang/String;</span>
+  #<span class="number">55</span> <span class="operator">=</span> NameAndType        #<span class="number">81</span><span class="punctuation">:</span>#<span class="number">65</span>        <span spellcheck="true" class="comment">// println:(Ljava/lang/String;)V</span>
+  #<span class="number">56</span> <span class="operator">=</span> Utf8               time<span class="punctuation">:</span>
+  #<span class="number">57</span> <span class="operator">=</span> Utf8               ms
+  #<span class="number">58</span> <span class="operator">=</span> Utf8               done<span class="punctuation">.</span>
+  #<span class="number">59</span> <span class="operator">=</span> Utf8               Main
+  #<span class="number">60</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>lang<span class="operator">/</span>System
+  #<span class="number">61</span> <span class="operator">=</span> Utf8               out
+  #<span class="number">62</span> <span class="operator">=</span> Utf8               Ljava<span class="operator">/</span>io<span class="operator">/</span>PrintStream<span class="punctuation">;</span>
+  #<span class="number">63</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>io<span class="operator">/</span>PrintStream
+  #<span class="number">64</span> <span class="operator">=</span> Utf8               print
+  #<span class="number">65</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>V
+  #<span class="number">66</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>lang<span class="operator">/</span>Integer
+  #<span class="number">67</span> <span class="operator">=</span> Utf8               parseInt
+  #<span class="number">68</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>I
+  #<span class="number">69</span> <span class="operator">=</span> Utf8               currentTimeMillis
+  #<span class="number">70</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span><span class="punctuation">)</span>J
+  #<span class="number">71</span> <span class="operator">=</span> Utf8               valueOf
+  #<span class="number">72</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>I<span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>Integer<span class="punctuation">;</span>
+  #<span class="number">73</span> <span class="operator">=</span> Utf8               format
+  #<span class="number">74</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">[</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>Object<span class="punctuation">;</span><span class="punctuation">)</span>Ljava<span class="operator">/</span>io<span class="operator">/</span>PrintStream<span class="punctuation">;</span>
+  #<span class="number">75</span> <span class="operator">=</span> Utf8               append
+  #<span class="number">76</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>I<span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>StringBuilder<span class="punctuation">;</span>
+  #<span class="number">77</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>StringBuilder<span class="punctuation">;</span>
+  #<span class="number">78</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>J<span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>StringBuilder<span class="punctuation">;</span>
+  #<span class="number">79</span> <span class="operator">=</span> Utf8               toString
+  #<span class="number">80</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span><span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span>
+  #<span class="number">81</span> <span class="operator">=</span> Utf8               println
+<span class="punctuation">{</span>
+  <span class="keyword">public</span> <span class="function">Main</span><span class="punctuation">(</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    descriptor<span class="punctuation">:</span> <span class="punctuation">(</span><span class="punctuation">)</span>V
+    flags<span class="punctuation">:</span> ACC_PUBLIC
+    Code<span class="punctuation">:</span>
+      stack<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> locals<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> args_size<span class="operator">=</span><span class="number">1</span>
+         <span class="number">0</span><span class="punctuation">:</span> aload_0
+         <span class="number">1</span><span class="punctuation">:</span> invokespecial #<span class="number">1</span>                  <span spellcheck="true" class="comment">// Method java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span>
+         <span class="number">4</span><span class="punctuation">:</span> <span class="keyword">return</span>
+      LineNumberTable<span class="punctuation">:</span>
+        line <span class="number">1</span><span class="punctuation">:</span> <span class="number">0</span>
+
+  <span class="keyword">public</span> <span class="keyword">static</span> long <span class="function">fib</span><span class="punctuation">(</span>int<span class="punctuation">)</span><span class="punctuation">;</span>
+    descriptor<span class="punctuation">:</span> <span class="punctuation">(</span>I<span class="punctuation">)</span>J
+    flags<span class="punctuation">:</span> ACC_PUBLIC<span class="punctuation">,</span> ACC_STATIC
+    Code<span class="punctuation">:</span>
+      stack<span class="operator">=</span><span class="number">4</span><span class="punctuation">,</span> locals<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> args_size<span class="operator">=</span><span class="number">1</span>
+         <span class="number">0</span><span class="punctuation">:</span> iload_0
+         <span class="number">1</span><span class="punctuation">:</span> iconst_1
+         <span class="number">2</span><span class="punctuation">:</span> if_icmpgt     <span class="number">8</span>
+         <span class="number">5</span><span class="punctuation">:</span> iload_0
+         <span class="number">6</span><span class="punctuation">:</span> i2l
+         <span class="number">7</span><span class="punctuation">:</span> lreturn
+         <span class="number">8</span><span class="punctuation">:</span> iload_0
+         <span class="number">9</span><span class="punctuation">:</span> iconst_1
+        <span class="number">10</span><span class="punctuation">:</span> isub
+        <span class="number">11</span><span class="punctuation">:</span> invokestatic  #<span class="number">2</span>                  <span spellcheck="true" class="comment">// Method fib:(I)J</span>
+        <span class="number">14</span><span class="punctuation">:</span> iload_0
+        <span class="number">15</span><span class="punctuation">:</span> iconst_2
+        <span class="number">16</span><span class="punctuation">:</span> isub
+        <span class="number">17</span><span class="punctuation">:</span> invokestatic  #<span class="number">2</span>                  <span spellcheck="true" class="comment">// Method fib:(I)J</span>
+        <span class="number">20</span><span class="punctuation">:</span> ladd
+        <span class="number">21</span><span class="punctuation">:</span> lreturn
+      LineNumberTable<span class="punctuation">:</span>
+        line <span class="number">4</span><span class="punctuation">:</span> <span class="number">0</span>
+        line <span class="number">5</span><span class="punctuation">:</span> <span class="number">5</span>
+        line <span class="number">6</span><span class="punctuation">:</span> <span class="number">8</span>
+      StackMapTable<span class="punctuation">:</span> number_of_entries <span class="operator">=</span> <span class="number">1</span>
+        frame_type <span class="operator">=</span> <span class="number">8</span> <span spellcheck="true" class="comment">/* same */</span>
+
+  <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="function">main</span><span class="punctuation">(</span>java<span class="punctuation">.</span>lang<span class="punctuation">.</span>String<span class="punctuation">[</span><span class="punctuation">]</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    descriptor<span class="punctuation">:</span> <span class="punctuation">(</span><span class="punctuation">[</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>V
+    flags<span class="punctuation">:</span> ACC_PUBLIC<span class="punctuation">,</span> ACC_STATIC
+    Code<span class="punctuation">:</span>
+      stack<span class="operator">=</span><span class="number">6</span><span class="punctuation">,</span> locals<span class="operator">=</span><span class="number">6</span><span class="punctuation">,</span> args_size<span class="operator">=</span><span class="number">1</span>
+         <span class="number">0</span><span class="punctuation">:</span> aload_0
+         <span class="number">1</span><span class="punctuation">:</span> arraylength
+         <span class="number">2</span><span class="punctuation">:</span> ifne          <span class="number">14</span>
+         <span class="number">5</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+         <span class="number">8</span><span class="punctuation">:</span> ldc           #<span class="number">4</span>                  <span spellcheck="true" class="comment">// String help: java Fibonacci {Number}</span>
+        <span class="number">10</span><span class="punctuation">:</span> invokevirtual #<span class="number">5</span>                  <span spellcheck="true" class="comment">// Method java/io/PrintStream.print:(Ljava/lang/String;)V</span>
+        <span class="number">13</span><span class="punctuation">:</span> <span class="keyword">return</span>
+        <span class="number">14</span><span class="punctuation">:</span> aload_0
+        <span class="number">15</span><span class="punctuation">:</span> iconst_0
+        <span class="number">16</span><span class="punctuation">:</span> aaload
+        <span class="number">17</span><span class="punctuation">:</span> invokestatic  #<span class="number">6</span>                  <span spellcheck="true" class="comment">// Method java/lang/Integer.parseInt:(Ljava/lang/String;)I</span>
+        <span class="number">20</span><span class="punctuation">:</span> istore_1
+        <span class="number">21</span><span class="punctuation">:</span> invokestatic  #<span class="number">7</span>                  <span spellcheck="true" class="comment">// Method java/lang/System.currentTimeMillis:()J</span>
+        <span class="number">24</span><span class="punctuation">:</span> lstore_2
+        <span class="number">25</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+        <span class="number">28</span><span class="punctuation">:</span> ldc           #<span class="number">8</span>                  <span spellcheck="true" class="comment">// String Fibonacci from 1 to %s:\n</span>
+        <span class="number">30</span><span class="punctuation">:</span> iconst_1
+        <span class="number">31</span><span class="punctuation">:</span> anewarray     #<span class="number">9</span>                  <span spellcheck="true" class="comment">// class java/lang/Object</span>
+        <span class="number">34</span><span class="punctuation">:</span> dup
+        <span class="number">35</span><span class="punctuation">:</span> iconst_0
+        <span class="number">36</span><span class="punctuation">:</span> iload_1
+        <span class="number">37</span><span class="punctuation">:</span> invokestatic  #<span class="number">10</span>                 <span spellcheck="true" class="comment">// Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;</span>
+        <span class="number">40</span><span class="punctuation">:</span> aastore
+        <span class="number">41</span><span class="punctuation">:</span> invokevirtual #<span class="number">11</span>                 <span spellcheck="true" class="comment">// Method java/io/PrintStream.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/io/PrintStream;</span>
+        <span class="number">44</span><span class="punctuation">:</span> pop
+        <span class="number">45</span><span class="punctuation">:</span> iconst_1
+        <span class="number">46</span><span class="punctuation">:</span> istore        <span class="number">4</span>
+        <span class="number">48</span><span class="punctuation">:</span> iload         <span class="number">4</span>
+        <span class="number">50</span><span class="punctuation">:</span> iload_1
+        <span class="number">51</span><span class="punctuation">:</span> if_icmpgt     <span class="number">94</span>
+        <span class="number">54</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+        <span class="number">57</span><span class="punctuation">:</span> <span class="keyword">new</span>           #<span class="number">12</span>                 <span spellcheck="true" class="comment">// class java/lang/StringBuilder</span>
+        <span class="number">60</span><span class="punctuation">:</span> dup
+        <span class="number">61</span><span class="punctuation">:</span> invokespecial #<span class="number">13</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.&quot;&lt;init&gt;&quot;:()V</span>
+        <span class="number">64</span><span class="punctuation">:</span> iload         <span class="number">4</span>
+        <span class="number">66</span><span class="punctuation">:</span> invokevirtual #<span class="number">14</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(I)Ljava/lang/StringBuilder;</span>
+        <span class="number">69</span><span class="punctuation">:</span> ldc           #<span class="number">15</span>                 <span spellcheck="true" class="comment">// String :</span>
+        <span class="number">71</span><span class="punctuation">:</span> invokevirtual #<span class="number">16</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+        <span class="number">74</span><span class="punctuation">:</span> iload         <span class="number">4</span>
+        <span class="number">76</span><span class="punctuation">:</span> invokestatic  #<span class="number">2</span>                  <span spellcheck="true" class="comment">// Method fib:(I)J</span>
+        <span class="number">79</span><span class="punctuation">:</span> invokevirtual #<span class="number">17</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(J)Ljava/lang/StringBuilder;</span>
+        <span class="number">82</span><span class="punctuation">:</span> invokevirtual #<span class="number">18</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.toString:()Ljava/lang/String;</span>
+        <span class="number">85</span><span class="punctuation">:</span> invokevirtual #<span class="number">19</span>                 <span spellcheck="true" class="comment">// Method java/io/PrintStream.println:(Ljava/lang/String;)V</span>
+        <span class="number">88</span><span class="punctuation">:</span> iinc          <span class="number">4</span><span class="punctuation">,</span> <span class="number">1</span>
+        <span class="number">91</span><span class="punctuation">:</span> goto          <span class="number">48</span>
+        <span class="number">94</span><span class="punctuation">:</span> invokestatic  #<span class="number">7</span>                  <span spellcheck="true" class="comment">// Method java/lang/System.currentTimeMillis:()J</span>
+        <span class="number">97</span><span class="punctuation">:</span> lstore        <span class="number">4</span>
+        <span class="number">99</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+       <span class="number">102</span><span class="punctuation">:</span> <span class="keyword">new</span>           #<span class="number">12</span>                 <span spellcheck="true" class="comment">// class java/lang/StringBuilder</span>
+       <span class="number">105</span><span class="punctuation">:</span> dup
+       <span class="number">106</span><span class="punctuation">:</span> invokespecial #<span class="number">13</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.&quot;&lt;init&gt;&quot;:()V</span>
+       <span class="number">109</span><span class="punctuation">:</span> ldc           #<span class="number">20</span>                 <span spellcheck="true" class="comment">// String time:</span>
+       <span class="number">111</span><span class="punctuation">:</span> invokevirtual #<span class="number">16</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+       <span class="number">114</span><span class="punctuation">:</span> lload         <span class="number">4</span>
+       <span class="number">116</span><span class="punctuation">:</span> lload_2
+       <span class="number">117</span><span class="punctuation">:</span> lsub
+       <span class="number">118</span><span class="punctuation">:</span> invokevirtual #<span class="number">17</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(J)Ljava/lang/StringBuilder;</span>
+       <span class="number">121</span><span class="punctuation">:</span> ldc           #<span class="number">21</span>                 <span spellcheck="true" class="comment">// String ms</span>
+       <span class="number">123</span><span class="punctuation">:</span> invokevirtual #<span class="number">16</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+       <span class="number">126</span><span class="punctuation">:</span> invokevirtual #<span class="number">18</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.toString:()Ljava/lang/String;</span>
+       <span class="number">129</span><span class="punctuation">:</span> invokevirtual #<span class="number">19</span>                 <span spellcheck="true" class="comment">// Method java/io/PrintStream.println:(Ljava/lang/String;)V</span>
+       <span class="number">132</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+       <span class="number">135</span><span class="punctuation">:</span> ldc           #<span class="number">22</span>                 <span spellcheck="true" class="comment">// String done.</span>
+       <span class="number">137</span><span class="punctuation">:</span> invokevirtual #<span class="number">19</span>                 <span spellcheck="true" class="comment">// Method java/io/PrintStream.println:(Ljava/lang/String;)V</span>
+       <span class="number">140</span><span class="punctuation">:</span> <span class="keyword">return</span>
+      LineNumberTable<span class="punctuation">:</span>
+        line <span class="number">10</span><span class="punctuation">:</span> <span class="number">0</span>
+        line <span class="number">11</span><span class="punctuation">:</span> <span class="number">5</span>
+        line <span class="number">12</span><span class="punctuation">:</span> <span class="number">13</span>
+        line <span class="number">15</span><span class="punctuation">:</span> <span class="number">14</span>
+        line <span class="number">17</span><span class="punctuation">:</span> <span class="number">21</span>
+        line <span class="number">18</span><span class="punctuation">:</span> <span class="number">25</span>
+        line <span class="number">19</span><span class="punctuation">:</span> <span class="number">45</span>
+        line <span class="number">20</span><span class="punctuation">:</span> <span class="number">54</span>
+        line <span class="number">19</span><span class="punctuation">:</span> <span class="number">88</span>
+        line <span class="number">22</span><span class="punctuation">:</span> <span class="number">94</span>
+        line <span class="number">23</span><span class="punctuation">:</span> <span class="number">99</span>
+        line <span class="number">25</span><span class="punctuation">:</span> <span class="number">132</span>
+        line <span class="number">26</span><span class="punctuation">:</span> <span class="number">140</span>
+      StackMapTable<span class="punctuation">:</span> number_of_entries <span class="operator">=</span> <span class="number">3</span>
+        frame_type <span class="operator">=</span> <span class="number">14</span> <span spellcheck="true" class="comment">/* same */</span>
+        frame_type <span class="operator">=</span> <span class="number">254</span> <span spellcheck="true" class="comment">/* append */</span>
+          offset_delta <span class="operator">=</span> <span class="number">33</span>
+          locals <span class="operator">=</span> <span class="punctuation">[</span> int<span class="punctuation">,</span> long<span class="punctuation">,</span> int <span class="punctuation">]</span>
+        frame_type <span class="operator">=</span> <span class="number">250</span> <span spellcheck="true" class="comment">/* chop */</span>
+          offset_delta <span class="operator">=</span> <span class="number">45</span>
+<span class="punctuation">}</span>
+SourceFile<span class="punctuation">:</span> <span class="string">&quot;Main.java&quot;</span></pre><p>那么，首先，我们看到的是对于java文件信息的一些标识、本文件的版本信息等信息，这些不是很重要，所以省略。
+我们重点来说说该处的常量池。</p><pre class="prism language-undefined">#<span class="number">1</span> <span class="operator">=</span> Methodref          #<span class="number">9</span><span class="punctuation">.</span>#<span class="number">35</span>         <span spellcheck="true" class="comment">// java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span></pre><p><code>#1</code>主要表示的是常量池的程序计数器（从1开始的），Methodref 表示的是用于记录方法信息 从#9 计数器进入 #35处被调用。而下面的</p><pre class="prism language-undefined"><span class="punctuation">{</span>
+  <span class="keyword">public</span> <span class="function">Main</span><span class="punctuation">(</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    descriptor<span class="punctuation">:</span> <span class="punctuation">(</span><span class="punctuation">)</span>V
+    flags<span class="punctuation">:</span> ACC_PUBLIC
+    Code<span class="punctuation">:</span>
+      stack<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> locals<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> args_size<span class="operator">=</span><span class="number">1</span>
+         <span class="number">0</span><span class="punctuation">:</span> aload_0
+         <span class="number">1</span><span class="punctuation">:</span> invokespecial #<span class="number">1</span>                  <span spellcheck="true" class="comment">// Method java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span>
+         <span class="number">4</span><span class="punctuation">:</span> <span class="keyword">return</span>
+      LineNumberTable<span class="punctuation">:</span>
+        line <span class="number">1</span><span class="punctuation">:</span> <span class="number">0</span>
+<span class="punctuation">.</span><span class="punctuation">.</span><span class="punctuation">.</span></pre><p>表示的是类名、方法名，descriptor用来区分是类还是方法，flags 来表示方法是什么样的类型，code则是代码段， LineNumberTable 表示的是这个方法在原java的第几行。
+那么我们着重分析一下</p><pre class="prism language-undefined">         <span class="number">0</span><span class="punctuation">:</span> aload_0
+         <span class="number">1</span><span class="punctuation">:</span> invokespecial #<span class="number">1</span>                  <span spellcheck="true" class="comment">// Method java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span>
+         <span class="number">4</span><span class="punctuation">:</span> <span class="keyword">return</span></pre><p>上面的三条指令：</p><p>aload_0:这个操作码是aload格式操作码中的一个。它们用来把对象引用加载到操作码栈。 表示正在被访问的局部变量数组的位置，但只能是0、1、2、3 中的一个。还有一些其它类似的操作码用来载入非对象引用的数据，如iload, lload, float 和 dload。其中 i 表示 int，l 表示 long，f 表示 float，d 表示 double。局部变量数组位置大于 3 的局部变量可以用 iload, lload, float, dload 和 aload 载入。这些操作码都只需要一个操作数，即数组中的位置。
+invokespecial:这些操作码属于一组函数调用的操作码，包括：invokedynamic、invokeinterface、invokespecial、invokestatic、invokevirtual。在这个 class 文件中，invokespecial 和 invokevirutal 两个指令都用到了，两者的区别是，invokevirutal 指令调用一个对象的实例方法，invokespecial 指令调用实例初始化方法、私有方法、父类方法。
+return：这个操作码属于ireturn、lreturn、freturn、dreturn、areturn 和 return 操作码组。每个操作码返回一种类型的返回值，其中 i 表示 int，l 表示 long，f 表示 float，d 表示 double，a 表示 对象引用。没有前缀类型字母的 return 表示返回 void。
+对于上述的指令，都会有操作数栈来进行配合。如果操作数没用完则return ，则等待系统进行垃圾回收。若用完未取到则会跑出异常。
+详细的指令信息可以在：<a href="https://docs.oracle.com/javase/specs/jvms/se7/html/index.html">https://docs.oracle.com/javase/specs/jvms/se7/html/index.html</a>  中见到</p><p>通过上述对于class类的简要分析，我们对jvm class文件有了一定的了解。接下来将讲述详细的内容以及如何去应用。</p></div></div><div class="nav-docs"><div class="nav-docs-section"><h3>Subscribe</h3><a rel="home" type="application/rss+xml" href="/blog/rss.xml">RSS</a></div><div class="nav-docs-section"><h3>Recent Posts</h3><ul><li><a href="/blog/java-backengineering/">java 反向工程</a></li><li><a href="/blog/continous-publish/">持续发布项目</a></li><li><a href="/blog/model-engine/">java script 模版引擎初探</a></li><li>浅谈 node-jvm(2)</li><li><a href="/blog/java-jvm/">浅谈 node-jvm(1)</a></li><li><a href="/blog/java-annotation/">java 注解</a></li></ul></div></div></div></section><footer><section><a class="footer-home" href="/">MartinDelophy powered by graphql.org</a></section></footer></body></html>        <canvas id="live2d" width="260" height="300" className="live_2d" style="position:fixed;right:0px;bottom:0px" /><script src="/static/js/live2d.min.js"></script><!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/><title>浅谈 node-jvm(2) | MartinDelophy</title><meta name="viewport" content="width=640"/><link rel="stylesheet" href="/style.css"/></head><body><header><section><a class="nav-home" href="/">MartinDelophy</a><nav><a href="/blog">技术博客</a><a href="/#">个人简历</a><a href="/#">图标3</a><a href="/#" class="active">图标4</a><a href="/#">图标5</a></nav><div class="algolia-search-wrapper"><input type="text" id="algolia-search-input" placeholder="请搜索..."/></div></section></header><section><div class="documentationContent"><div class="inner-content"><h1>浅谈 node-jvm(2)</h1><p>2018-5-15 by MartinDelophy</p><hr/><div><p>上回，我们很简单的对node-jvm进行了一定的分析，但问题还是停留在表面，仅仅只是介绍了node 里面的一些特点，和java并无很多的关系，今天让我们接着来讲后续的内容。
+要想很清晰的知道后续的内容，我们首先要对java class类文件做一定的了解。
+我想在网上这样的文章算是比较多了，我推荐几个链接可以去看看
+1.<a href="https://blog.csdn.net/u010425776/article/details/51245055">https://blog.csdn.net/u010425776/article/details/51245055</a>
+2.<a href="https://www.cnblogs.com/Qian123/p/5707562.html">https://www.cnblogs.com/Qian123/p/5707562.html</a>
+3.<a href="https://blog.csdn.net/u013309870/article/details/72975536">https://blog.csdn.net/u013309870/article/details/72975536</a>
+4.<a href="http://www.blogjava.net/DLevin/archive/2011/09/05/358033.html">http://www.blogjava.net/DLevin/archive/2011/09/05/358033.html</a>
+5.<a href="http://www.blogjava.net/DLevin/archive/2011/09/05/358034.html">http://www.blogjava.net/DLevin/archive/2011/09/05/358034.html</a></p><p>看了上面几个文章之后，我们开始实战来分析一下下面的代码
+首先看到的是用来针对fib 进行计算的java文件</p><p>Main.java</p><pre class="prism language-undefined"><span class="keyword">public</span> <span class="keyword">class</span> <span class="class-name">Main</span> <span class="punctuation">{</span>
+
+    <span class="keyword">public</span> <span class="keyword">static</span> long <span class="function">fib</span><span class="punctuation">(</span>int n<span class="punctuation">)</span> <span class="punctuation">{</span>
+        <span class="keyword">if</span> <span class="punctuation">(</span>n <span class="operator">&lt;=</span> <span class="number">1</span><span class="punctuation">)</span>
+            <span class="keyword">return</span> n<span class="punctuation">;</span>
+        <span class="keyword">return</span> <span class="function">fib</span><span class="punctuation">(</span>n <span class="operator">-</span> <span class="number">1</span><span class="punctuation">)</span> <span class="operator">+</span> <span class="function">fib</span><span class="punctuation">(</span>n <span class="operator">-</span> <span class="number">2</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    <span class="punctuation">}</span>
+
+    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="function">main</span><span class="punctuation">(</span>String<span class="punctuation">[</span><span class="punctuation">]</span> args<span class="punctuation">)</span> <span class="punctuation">{</span>
+        <span class="keyword">if</span> <span class="punctuation">(</span>args<span class="punctuation">.</span>length <span class="operator">==</span> <span class="number">0</span><span class="punctuation">)</span> <span class="punctuation">{</span>
+            System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">print</span><span class="punctuation">(</span><span class="string">&quot;help: java Fibonacci {Number}&quot;</span><span class="punctuation">)</span><span class="punctuation">;</span>
+            <span class="keyword">return</span><span class="punctuation">;</span>
+        <span class="punctuation">}</span>
+
+        int N <span class="operator">=</span> Integer<span class="punctuation">.</span><span class="function">parseInt</span><span class="punctuation">(</span>args<span class="punctuation">[</span><span class="number">0</span><span class="punctuation">]</span><span class="punctuation">)</span><span class="punctuation">;</span>
+
+        long start <span class="operator">=</span> System<span class="punctuation">.</span><span class="function">currentTimeMillis</span><span class="punctuation">(</span><span class="punctuation">)</span><span class="punctuation">;</span>
+        System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">format</span><span class="punctuation">(</span><span class="string">&quot;Fibonacci from 1 to %s:\n&quot;</span><span class="punctuation">,</span> N<span class="punctuation">)</span><span class="punctuation">;</span>
+        <span class="keyword">for</span> <span class="punctuation">(</span>int i <span class="operator">=</span> <span class="number">1</span><span class="punctuation">;</span> i <span class="operator">&lt;=</span> N<span class="punctuation">;</span> i<span class="operator">++</span><span class="punctuation">)</span> <span class="punctuation">{</span>
+            System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">println</span><span class="punctuation">(</span>i <span class="operator">+</span> <span class="string">&quot;: &quot;</span> <span class="operator">+</span> <span class="function">fib</span><span class="punctuation">(</span>i<span class="punctuation">)</span><span class="punctuation">)</span><span class="punctuation">;</span>
+        <span class="punctuation">}</span>
+        long stop <span class="operator">=</span> System<span class="punctuation">.</span><span class="function">currentTimeMillis</span><span class="punctuation">(</span><span class="punctuation">)</span><span class="punctuation">;</span>
+        System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">println</span><span class="punctuation">(</span><span class="string">&quot;time: &quot;</span> <span class="operator">+</span> <span class="punctuation">(</span>stop <span class="operator">-</span> start<span class="punctuation">)</span> <span class="operator">+</span> <span class="string">&quot;ms&quot;</span><span class="punctuation">)</span><span class="punctuation">;</span>
+
+        System<span class="punctuation">.</span>out<span class="punctuation">.</span><span class="function">println</span><span class="punctuation">(</span><span class="string">&quot;done.&quot;</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    <span class="punctuation">}</span>
+<span class="punctuation">}</span></pre><p>该部分代码，主要是实现了最基本的fib 功能，并且调用。</p><p>那么接下来我用make 生成Main.class文件,然后通过
+javap -v -verbose Main 分析一下改该类文件中的内容，内容如下：</p><pre class="prism language-undefined">Last modified May <span class="number">7</span><span class="punctuation">,</span> <span class="number">2018</span><span class="punctuation">;</span> size <span class="number">1286</span> bytes
+  MD5 checksum 115352bb394b31575a6288f7bdf82f35
+  Compiled <span class="keyword">from</span> <span class="string">&quot;Main.java&quot;</span>
+<span class="keyword">public</span> <span class="keyword">class</span> <span class="class-name">Main</span>
+  minor version<span class="punctuation">:</span> <span class="number">0</span>
+  major version<span class="punctuation">:</span> <span class="number">52</span>
+  flags<span class="punctuation">:</span> ACC_PUBLIC<span class="punctuation">,</span> ACC_SUPER
+Constant pool<span class="punctuation">:</span>
+   #<span class="number">1</span> <span class="operator">=</span> Methodref          #<span class="number">9</span><span class="punctuation">.</span>#<span class="number">35</span>         <span spellcheck="true" class="comment">// java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span>
+   #<span class="number">2</span> <span class="operator">=</span> Methodref          #<span class="number">23</span><span class="punctuation">.</span>#<span class="number">36</span>        <span spellcheck="true" class="comment">// Main.fib:(I)J</span>
+   #<span class="number">3</span> <span class="operator">=</span> Fieldref           #<span class="number">37</span><span class="punctuation">.</span>#<span class="number">38</span>        <span spellcheck="true" class="comment">// java/lang/System.out:Ljava/io/PrintStream;</span>
+   #<span class="number">4</span> <span class="operator">=</span> String             #<span class="number">39</span>            <span spellcheck="true" class="comment">// help: java Fibonacci {Number}</span>
+   #<span class="number">5</span> <span class="operator">=</span> Methodref          #<span class="number">40</span><span class="punctuation">.</span>#<span class="number">41</span>        <span spellcheck="true" class="comment">// java/io/PrintStream.print:(Ljava/lang/String;)V</span>
+   #<span class="number">6</span> <span class="operator">=</span> Methodref          #<span class="number">42</span><span class="punctuation">.</span>#<span class="number">43</span>        <span spellcheck="true" class="comment">// java/lang/Integer.parseInt:(Ljava/lang/String;)I</span>
+   #<span class="number">7</span> <span class="operator">=</span> Methodref          #<span class="number">37</span><span class="punctuation">.</span>#<span class="number">44</span>        <span spellcheck="true" class="comment">// java/lang/System.currentTimeMillis:()J</span>
+   #<span class="number">8</span> <span class="operator">=</span> String             #<span class="number">45</span>            <span spellcheck="true" class="comment">// Fibonacci from 1 to %s:\n</span>
+   #<span class="number">9</span> <span class="operator">=</span> Class              #<span class="number">46</span>            <span spellcheck="true" class="comment">// java/lang/Object</span>
+  #<span class="number">10</span> <span class="operator">=</span> Methodref          #<span class="number">42</span><span class="punctuation">.</span>#<span class="number">47</span>        <span spellcheck="true" class="comment">// java/lang/Integer.valueOf:(I)Ljava/lang/Integer;</span>
+  #<span class="number">11</span> <span class="operator">=</span> Methodref          #<span class="number">40</span><span class="punctuation">.</span>#<span class="number">48</span>        <span spellcheck="true" class="comment">// java/io/PrintStream.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/io/PrintStream;</span>
+  #<span class="number">12</span> <span class="operator">=</span> Class              #<span class="number">49</span>            <span spellcheck="true" class="comment">// java/lang/StringBuilder</span>
+  #<span class="number">13</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">35</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.&quot;&lt;init&gt;&quot;:()V</span>
+  #<span class="number">14</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">50</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.append:(I)Ljava/lang/StringBuilder;</span>
+  #<span class="number">15</span> <span class="operator">=</span> String             #<span class="number">51</span>            <span spellcheck="true" class="comment">// :</span>
+  #<span class="number">16</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">52</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+  #<span class="number">17</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">53</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.append:(J)Ljava/lang/StringBuilder;</span>
+  #<span class="number">18</span> <span class="operator">=</span> Methodref          #<span class="number">12</span><span class="punctuation">.</span>#<span class="number">54</span>        <span spellcheck="true" class="comment">// java/lang/StringBuilder.toString:()Ljava/lang/String;</span>
+  #<span class="number">19</span> <span class="operator">=</span> Methodref          #<span class="number">40</span><span class="punctuation">.</span>#<span class="number">55</span>        <span spellcheck="true" class="comment">// java/io/PrintStream.println:(Ljava/lang/String;)V</span>
+  #<span class="number">20</span> <span class="operator">=</span> String             #<span class="number">56</span>            <span spellcheck="true" class="comment">// time:</span>
+  #<span class="number">21</span> <span class="operator">=</span> String             #<span class="number">57</span>            <span spellcheck="true" class="comment">// ms</span>
+  #<span class="number">22</span> <span class="operator">=</span> String             #<span class="number">58</span>            <span spellcheck="true" class="comment">// done.</span>
+  #<span class="number">23</span> <span class="operator">=</span> Class              #<span class="number">59</span>            <span spellcheck="true" class="comment">// Main</span>
+  #<span class="number">24</span> <span class="operator">=</span> Utf8               <span class="operator">&lt;</span>init<span class="operator">&gt;</span>
+  #<span class="number">25</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span><span class="punctuation">)</span>V
+  #<span class="number">26</span> <span class="operator">=</span> Utf8               Code
+  #<span class="number">27</span> <span class="operator">=</span> Utf8               LineNumberTable
+  #<span class="number">28</span> <span class="operator">=</span> Utf8               fib
+  #<span class="number">29</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>I<span class="punctuation">)</span>J
+  #<span class="number">30</span> <span class="operator">=</span> Utf8               StackMapTable
+  #<span class="number">31</span> <span class="operator">=</span> Utf8               main
+  #<span class="number">32</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span><span class="punctuation">[</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>V
+  #<span class="number">33</span> <span class="operator">=</span> Utf8               SourceFile
+  #<span class="number">34</span> <span class="operator">=</span> Utf8               Main<span class="punctuation">.</span>java
+  #<span class="number">35</span> <span class="operator">=</span> NameAndType        #<span class="number">24</span><span class="punctuation">:</span>#<span class="number">25</span>        <span spellcheck="true" class="comment">// &quot;&lt;init&gt;&quot;:()V</span>
+  #<span class="number">36</span> <span class="operator">=</span> NameAndType        #<span class="number">28</span><span class="punctuation">:</span>#<span class="number">29</span>        <span spellcheck="true" class="comment">// fib:(I)J</span>
+  #<span class="number">37</span> <span class="operator">=</span> Class              #<span class="number">60</span>            <span spellcheck="true" class="comment">// java/lang/System</span>
+  #<span class="number">38</span> <span class="operator">=</span> NameAndType        #<span class="number">61</span><span class="punctuation">:</span>#<span class="number">62</span>        <span spellcheck="true" class="comment">// out:Ljava/io/PrintStream;</span>
+  #<span class="number">39</span> <span class="operator">=</span> Utf8               help<span class="punctuation">:</span> java Fibonacci <span class="punctuation">{</span>Number<span class="punctuation">}</span>
+  #<span class="number">40</span> <span class="operator">=</span> Class              #<span class="number">63</span>            <span spellcheck="true" class="comment">// java/io/PrintStream</span>
+  #<span class="number">41</span> <span class="operator">=</span> NameAndType        #<span class="number">64</span><span class="punctuation">:</span>#<span class="number">65</span>        <span spellcheck="true" class="comment">// print:(Ljava/lang/String;)V</span>
+  #<span class="number">42</span> <span class="operator">=</span> Class              #<span class="number">66</span>            <span spellcheck="true" class="comment">// java/lang/Integer</span>
+  #<span class="number">43</span> <span class="operator">=</span> NameAndType        #<span class="number">67</span><span class="punctuation">:</span>#<span class="number">68</span>        <span spellcheck="true" class="comment">// parseInt:(Ljava/lang/String;)I</span>
+  #<span class="number">44</span> <span class="operator">=</span> NameAndType        #<span class="number">69</span><span class="punctuation">:</span>#<span class="number">70</span>        <span spellcheck="true" class="comment">// currentTimeMillis:()J</span>
+  #<span class="number">45</span> <span class="operator">=</span> Utf8               Fibonacci <span class="keyword">from</span> <span class="number">1</span> to <span class="operator">%</span>s<span class="punctuation">:</span>\n
+  #<span class="number">46</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>lang<span class="operator">/</span>Object
+  #<span class="number">47</span> <span class="operator">=</span> NameAndType        #<span class="number">71</span><span class="punctuation">:</span>#<span class="number">72</span>        <span spellcheck="true" class="comment">// valueOf:(I)Ljava/lang/Integer;</span>
+  #<span class="number">48</span> <span class="operator">=</span> NameAndType        #<span class="number">73</span><span class="punctuation">:</span>#<span class="number">74</span>        <span spellcheck="true" class="comment">// format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/io/PrintStream;</span>
+  #<span class="number">49</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>lang<span class="operator">/</span>StringBuilder
+  #<span class="number">50</span> <span class="operator">=</span> NameAndType        #<span class="number">75</span><span class="punctuation">:</span>#<span class="number">76</span>        <span spellcheck="true" class="comment">// append:(I)Ljava/lang/StringBuilder;</span>
+  #<span class="number">51</span> <span class="operator">=</span> Utf8               <span class="punctuation">:</span>
+  #<span class="number">52</span> <span class="operator">=</span> NameAndType        #<span class="number">75</span><span class="punctuation">:</span>#<span class="number">77</span>        <span spellcheck="true" class="comment">// append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+  #<span class="number">53</span> <span class="operator">=</span> NameAndType        #<span class="number">75</span><span class="punctuation">:</span>#<span class="number">78</span>        <span spellcheck="true" class="comment">// append:(J)Ljava/lang/StringBuilder;</span>
+  #<span class="number">54</span> <span class="operator">=</span> NameAndType        #<span class="number">79</span><span class="punctuation">:</span>#<span class="number">80</span>        <span spellcheck="true" class="comment">// toString:()Ljava/lang/String;</span>
+  #<span class="number">55</span> <span class="operator">=</span> NameAndType        #<span class="number">81</span><span class="punctuation">:</span>#<span class="number">65</span>        <span spellcheck="true" class="comment">// println:(Ljava/lang/String;)V</span>
+  #<span class="number">56</span> <span class="operator">=</span> Utf8               time<span class="punctuation">:</span>
+  #<span class="number">57</span> <span class="operator">=</span> Utf8               ms
+  #<span class="number">58</span> <span class="operator">=</span> Utf8               done<span class="punctuation">.</span>
+  #<span class="number">59</span> <span class="operator">=</span> Utf8               Main
+  #<span class="number">60</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>lang<span class="operator">/</span>System
+  #<span class="number">61</span> <span class="operator">=</span> Utf8               out
+  #<span class="number">62</span> <span class="operator">=</span> Utf8               Ljava<span class="operator">/</span>io<span class="operator">/</span>PrintStream<span class="punctuation">;</span>
+  #<span class="number">63</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>io<span class="operator">/</span>PrintStream
+  #<span class="number">64</span> <span class="operator">=</span> Utf8               print
+  #<span class="number">65</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>V
+  #<span class="number">66</span> <span class="operator">=</span> Utf8               java<span class="operator">/</span>lang<span class="operator">/</span>Integer
+  #<span class="number">67</span> <span class="operator">=</span> Utf8               parseInt
+  #<span class="number">68</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>I
+  #<span class="number">69</span> <span class="operator">=</span> Utf8               currentTimeMillis
+  #<span class="number">70</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span><span class="punctuation">)</span>J
+  #<span class="number">71</span> <span class="operator">=</span> Utf8               valueOf
+  #<span class="number">72</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>I<span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>Integer<span class="punctuation">;</span>
+  #<span class="number">73</span> <span class="operator">=</span> Utf8               format
+  #<span class="number">74</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">[</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>Object<span class="punctuation">;</span><span class="punctuation">)</span>Ljava<span class="operator">/</span>io<span class="operator">/</span>PrintStream<span class="punctuation">;</span>
+  #<span class="number">75</span> <span class="operator">=</span> Utf8               append
+  #<span class="number">76</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>I<span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>StringBuilder<span class="punctuation">;</span>
+  #<span class="number">77</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>StringBuilder<span class="punctuation">;</span>
+  #<span class="number">78</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span>J<span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>StringBuilder<span class="punctuation">;</span>
+  #<span class="number">79</span> <span class="operator">=</span> Utf8               toString
+  #<span class="number">80</span> <span class="operator">=</span> Utf8               <span class="punctuation">(</span><span class="punctuation">)</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span>
+  #<span class="number">81</span> <span class="operator">=</span> Utf8               println
+<span class="punctuation">{</span>
+  <span class="keyword">public</span> <span class="function">Main</span><span class="punctuation">(</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    descriptor<span class="punctuation">:</span> <span class="punctuation">(</span><span class="punctuation">)</span>V
+    flags<span class="punctuation">:</span> ACC_PUBLIC
+    Code<span class="punctuation">:</span>
+      stack<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> locals<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> args_size<span class="operator">=</span><span class="number">1</span>
+         <span class="number">0</span><span class="punctuation">:</span> aload_0
+         <span class="number">1</span><span class="punctuation">:</span> invokespecial #<span class="number">1</span>                  <span spellcheck="true" class="comment">// Method java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span>
+         <span class="number">4</span><span class="punctuation">:</span> <span class="keyword">return</span>
+      LineNumberTable<span class="punctuation">:</span>
+        line <span class="number">1</span><span class="punctuation">:</span> <span class="number">0</span>
+
+  <span class="keyword">public</span> <span class="keyword">static</span> long <span class="function">fib</span><span class="punctuation">(</span>int<span class="punctuation">)</span><span class="punctuation">;</span>
+    descriptor<span class="punctuation">:</span> <span class="punctuation">(</span>I<span class="punctuation">)</span>J
+    flags<span class="punctuation">:</span> ACC_PUBLIC<span class="punctuation">,</span> ACC_STATIC
+    Code<span class="punctuation">:</span>
+      stack<span class="operator">=</span><span class="number">4</span><span class="punctuation">,</span> locals<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> args_size<span class="operator">=</span><span class="number">1</span>
+         <span class="number">0</span><span class="punctuation">:</span> iload_0
+         <span class="number">1</span><span class="punctuation">:</span> iconst_1
+         <span class="number">2</span><span class="punctuation">:</span> if_icmpgt     <span class="number">8</span>
+         <span class="number">5</span><span class="punctuation">:</span> iload_0
+         <span class="number">6</span><span class="punctuation">:</span> i2l
+         <span class="number">7</span><span class="punctuation">:</span> lreturn
+         <span class="number">8</span><span class="punctuation">:</span> iload_0
+         <span class="number">9</span><span class="punctuation">:</span> iconst_1
+        <span class="number">10</span><span class="punctuation">:</span> isub
+        <span class="number">11</span><span class="punctuation">:</span> invokestatic  #<span class="number">2</span>                  <span spellcheck="true" class="comment">// Method fib:(I)J</span>
+        <span class="number">14</span><span class="punctuation">:</span> iload_0
+        <span class="number">15</span><span class="punctuation">:</span> iconst_2
+        <span class="number">16</span><span class="punctuation">:</span> isub
+        <span class="number">17</span><span class="punctuation">:</span> invokestatic  #<span class="number">2</span>                  <span spellcheck="true" class="comment">// Method fib:(I)J</span>
+        <span class="number">20</span><span class="punctuation">:</span> ladd
+        <span class="number">21</span><span class="punctuation">:</span> lreturn
+      LineNumberTable<span class="punctuation">:</span>
+        line <span class="number">4</span><span class="punctuation">:</span> <span class="number">0</span>
+        line <span class="number">5</span><span class="punctuation">:</span> <span class="number">5</span>
+        line <span class="number">6</span><span class="punctuation">:</span> <span class="number">8</span>
+      StackMapTable<span class="punctuation">:</span> number_of_entries <span class="operator">=</span> <span class="number">1</span>
+        frame_type <span class="operator">=</span> <span class="number">8</span> <span spellcheck="true" class="comment">/* same */</span>
+
+  <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="function">main</span><span class="punctuation">(</span>java<span class="punctuation">.</span>lang<span class="punctuation">.</span>String<span class="punctuation">[</span><span class="punctuation">]</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    descriptor<span class="punctuation">:</span> <span class="punctuation">(</span><span class="punctuation">[</span>Ljava<span class="operator">/</span>lang<span class="operator">/</span>String<span class="punctuation">;</span><span class="punctuation">)</span>V
+    flags<span class="punctuation">:</span> ACC_PUBLIC<span class="punctuation">,</span> ACC_STATIC
+    Code<span class="punctuation">:</span>
+      stack<span class="operator">=</span><span class="number">6</span><span class="punctuation">,</span> locals<span class="operator">=</span><span class="number">6</span><span class="punctuation">,</span> args_size<span class="operator">=</span><span class="number">1</span>
+         <span class="number">0</span><span class="punctuation">:</span> aload_0
+         <span class="number">1</span><span class="punctuation">:</span> arraylength
+         <span class="number">2</span><span class="punctuation">:</span> ifne          <span class="number">14</span>
+         <span class="number">5</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+         <span class="number">8</span><span class="punctuation">:</span> ldc           #<span class="number">4</span>                  <span spellcheck="true" class="comment">// String help: java Fibonacci {Number}</span>
+        <span class="number">10</span><span class="punctuation">:</span> invokevirtual #<span class="number">5</span>                  <span spellcheck="true" class="comment">// Method java/io/PrintStream.print:(Ljava/lang/String;)V</span>
+        <span class="number">13</span><span class="punctuation">:</span> <span class="keyword">return</span>
+        <span class="number">14</span><span class="punctuation">:</span> aload_0
+        <span class="number">15</span><span class="punctuation">:</span> iconst_0
+        <span class="number">16</span><span class="punctuation">:</span> aaload
+        <span class="number">17</span><span class="punctuation">:</span> invokestatic  #<span class="number">6</span>                  <span spellcheck="true" class="comment">// Method java/lang/Integer.parseInt:(Ljava/lang/String;)I</span>
+        <span class="number">20</span><span class="punctuation">:</span> istore_1
+        <span class="number">21</span><span class="punctuation">:</span> invokestatic  #<span class="number">7</span>                  <span spellcheck="true" class="comment">// Method java/lang/System.currentTimeMillis:()J</span>
+        <span class="number">24</span><span class="punctuation">:</span> lstore_2
+        <span class="number">25</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+        <span class="number">28</span><span class="punctuation">:</span> ldc           #<span class="number">8</span>                  <span spellcheck="true" class="comment">// String Fibonacci from 1 to %s:\n</span>
+        <span class="number">30</span><span class="punctuation">:</span> iconst_1
+        <span class="number">31</span><span class="punctuation">:</span> anewarray     #<span class="number">9</span>                  <span spellcheck="true" class="comment">// class java/lang/Object</span>
+        <span class="number">34</span><span class="punctuation">:</span> dup
+        <span class="number">35</span><span class="punctuation">:</span> iconst_0
+        <span class="number">36</span><span class="punctuation">:</span> iload_1
+        <span class="number">37</span><span class="punctuation">:</span> invokestatic  #<span class="number">10</span>                 <span spellcheck="true" class="comment">// Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;</span>
+        <span class="number">40</span><span class="punctuation">:</span> aastore
+        <span class="number">41</span><span class="punctuation">:</span> invokevirtual #<span class="number">11</span>                 <span spellcheck="true" class="comment">// Method java/io/PrintStream.format:(Ljava/lang/String;[Ljava/lang/Object;)Ljava/io/PrintStream;</span>
+        <span class="number">44</span><span class="punctuation">:</span> pop
+        <span class="number">45</span><span class="punctuation">:</span> iconst_1
+        <span class="number">46</span><span class="punctuation">:</span> istore        <span class="number">4</span>
+        <span class="number">48</span><span class="punctuation">:</span> iload         <span class="number">4</span>
+        <span class="number">50</span><span class="punctuation">:</span> iload_1
+        <span class="number">51</span><span class="punctuation">:</span> if_icmpgt     <span class="number">94</span>
+        <span class="number">54</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+        <span class="number">57</span><span class="punctuation">:</span> <span class="keyword">new</span>           #<span class="number">12</span>                 <span spellcheck="true" class="comment">// class java/lang/StringBuilder</span>
+        <span class="number">60</span><span class="punctuation">:</span> dup
+        <span class="number">61</span><span class="punctuation">:</span> invokespecial #<span class="number">13</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.&quot;&lt;init&gt;&quot;:()V</span>
+        <span class="number">64</span><span class="punctuation">:</span> iload         <span class="number">4</span>
+        <span class="number">66</span><span class="punctuation">:</span> invokevirtual #<span class="number">14</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(I)Ljava/lang/StringBuilder;</span>
+        <span class="number">69</span><span class="punctuation">:</span> ldc           #<span class="number">15</span>                 <span spellcheck="true" class="comment">// String :</span>
+        <span class="number">71</span><span class="punctuation">:</span> invokevirtual #<span class="number">16</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+        <span class="number">74</span><span class="punctuation">:</span> iload         <span class="number">4</span>
+        <span class="number">76</span><span class="punctuation">:</span> invokestatic  #<span class="number">2</span>                  <span spellcheck="true" class="comment">// Method fib:(I)J</span>
+        <span class="number">79</span><span class="punctuation">:</span> invokevirtual #<span class="number">17</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(J)Ljava/lang/StringBuilder;</span>
+        <span class="number">82</span><span class="punctuation">:</span> invokevirtual #<span class="number">18</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.toString:()Ljava/lang/String;</span>
+        <span class="number">85</span><span class="punctuation">:</span> invokevirtual #<span class="number">19</span>                 <span spellcheck="true" class="comment">// Method java/io/PrintStream.println:(Ljava/lang/String;)V</span>
+        <span class="number">88</span><span class="punctuation">:</span> iinc          <span class="number">4</span><span class="punctuation">,</span> <span class="number">1</span>
+        <span class="number">91</span><span class="punctuation">:</span> goto          <span class="number">48</span>
+        <span class="number">94</span><span class="punctuation">:</span> invokestatic  #<span class="number">7</span>                  <span spellcheck="true" class="comment">// Method java/lang/System.currentTimeMillis:()J</span>
+        <span class="number">97</span><span class="punctuation">:</span> lstore        <span class="number">4</span>
+        <span class="number">99</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+       <span class="number">102</span><span class="punctuation">:</span> <span class="keyword">new</span>           #<span class="number">12</span>                 <span spellcheck="true" class="comment">// class java/lang/StringBuilder</span>
+       <span class="number">105</span><span class="punctuation">:</span> dup
+       <span class="number">106</span><span class="punctuation">:</span> invokespecial #<span class="number">13</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.&quot;&lt;init&gt;&quot;:()V</span>
+       <span class="number">109</span><span class="punctuation">:</span> ldc           #<span class="number">20</span>                 <span spellcheck="true" class="comment">// String time:</span>
+       <span class="number">111</span><span class="punctuation">:</span> invokevirtual #<span class="number">16</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+       <span class="number">114</span><span class="punctuation">:</span> lload         <span class="number">4</span>
+       <span class="number">116</span><span class="punctuation">:</span> lload_2
+       <span class="number">117</span><span class="punctuation">:</span> lsub
+       <span class="number">118</span><span class="punctuation">:</span> invokevirtual #<span class="number">17</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(J)Ljava/lang/StringBuilder;</span>
+       <span class="number">121</span><span class="punctuation">:</span> ldc           #<span class="number">21</span>                 <span spellcheck="true" class="comment">// String ms</span>
+       <span class="number">123</span><span class="punctuation">:</span> invokevirtual #<span class="number">16</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;</span>
+       <span class="number">126</span><span class="punctuation">:</span> invokevirtual #<span class="number">18</span>                 <span spellcheck="true" class="comment">// Method java/lang/StringBuilder.toString:()Ljava/lang/String;</span>
+       <span class="number">129</span><span class="punctuation">:</span> invokevirtual #<span class="number">19</span>                 <span spellcheck="true" class="comment">// Method java/io/PrintStream.println:(Ljava/lang/String;)V</span>
+       <span class="number">132</span><span class="punctuation">:</span> getstatic     #<span class="number">3</span>                  <span spellcheck="true" class="comment">// Field java/lang/System.out:Ljava/io/PrintStream;</span>
+       <span class="number">135</span><span class="punctuation">:</span> ldc           #<span class="number">22</span>                 <span spellcheck="true" class="comment">// String done.</span>
+       <span class="number">137</span><span class="punctuation">:</span> invokevirtual #<span class="number">19</span>                 <span spellcheck="true" class="comment">// Method java/io/PrintStream.println:(Ljava/lang/String;)V</span>
+       <span class="number">140</span><span class="punctuation">:</span> <span class="keyword">return</span>
+      LineNumberTable<span class="punctuation">:</span>
+        line <span class="number">10</span><span class="punctuation">:</span> <span class="number">0</span>
+        line <span class="number">11</span><span class="punctuation">:</span> <span class="number">5</span>
+        line <span class="number">12</span><span class="punctuation">:</span> <span class="number">13</span>
+        line <span class="number">15</span><span class="punctuation">:</span> <span class="number">14</span>
+        line <span class="number">17</span><span class="punctuation">:</span> <span class="number">21</span>
+        line <span class="number">18</span><span class="punctuation">:</span> <span class="number">25</span>
+        line <span class="number">19</span><span class="punctuation">:</span> <span class="number">45</span>
+        line <span class="number">20</span><span class="punctuation">:</span> <span class="number">54</span>
+        line <span class="number">19</span><span class="punctuation">:</span> <span class="number">88</span>
+        line <span class="number">22</span><span class="punctuation">:</span> <span class="number">94</span>
+        line <span class="number">23</span><span class="punctuation">:</span> <span class="number">99</span>
+        line <span class="number">25</span><span class="punctuation">:</span> <span class="number">132</span>
+        line <span class="number">26</span><span class="punctuation">:</span> <span class="number">140</span>
+      StackMapTable<span class="punctuation">:</span> number_of_entries <span class="operator">=</span> <span class="number">3</span>
+        frame_type <span class="operator">=</span> <span class="number">14</span> <span spellcheck="true" class="comment">/* same */</span>
+        frame_type <span class="operator">=</span> <span class="number">254</span> <span spellcheck="true" class="comment">/* append */</span>
+          offset_delta <span class="operator">=</span> <span class="number">33</span>
+          locals <span class="operator">=</span> <span class="punctuation">[</span> int<span class="punctuation">,</span> long<span class="punctuation">,</span> int <span class="punctuation">]</span>
+        frame_type <span class="operator">=</span> <span class="number">250</span> <span spellcheck="true" class="comment">/* chop */</span>
+          offset_delta <span class="operator">=</span> <span class="number">45</span>
+<span class="punctuation">}</span>
+SourceFile<span class="punctuation">:</span> <span class="string">&quot;Main.java&quot;</span></pre><p>那么，首先，我们看到的是对于java文件信息的一些标识、本文件的版本信息等信息，这些不是很重要，所以省略。
+我们重点来说说该处的常量池。</p><pre class="prism language-undefined">#<span class="number">1</span> <span class="operator">=</span> Methodref          #<span class="number">9</span><span class="punctuation">.</span>#<span class="number">35</span>         <span spellcheck="true" class="comment">// java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span></pre><p><code>#1</code>主要表示的是常量池的程序计数器（从1开始的），Methodref 表示的是用于记录方法信息 从#9 计数器进入 #35处被调用。而下面的</p><pre class="prism language-undefined"><span class="punctuation">{</span>
+  <span class="keyword">public</span> <span class="function">Main</span><span class="punctuation">(</span><span class="punctuation">)</span><span class="punctuation">;</span>
+    descriptor<span class="punctuation">:</span> <span class="punctuation">(</span><span class="punctuation">)</span>V
+    flags<span class="punctuation">:</span> ACC_PUBLIC
+    Code<span class="punctuation">:</span>
+      stack<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> locals<span class="operator">=</span><span class="number">1</span><span class="punctuation">,</span> args_size<span class="operator">=</span><span class="number">1</span>
+         <span class="number">0</span><span class="punctuation">:</span> aload_0
+         <span class="number">1</span><span class="punctuation">:</span> invokespecial #<span class="number">1</span>                  <span spellcheck="true" class="comment">// Method java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span>
+         <span class="number">4</span><span class="punctuation">:</span> <span class="keyword">return</span>
+      LineNumberTable<span class="punctuation">:</span>
+        line <span class="number">1</span><span class="punctuation">:</span> <span class="number">0</span>
+<span class="punctuation">.</span><span class="punctuation">.</span><span class="punctuation">.</span></pre><p>表示的是类名、方法名，descriptor用来区分是类还是方法，flags 来表示方法是什么样的类型，code则是代码段， LineNumberTable 表示的是这个方法在原java的第几行。
+那么我们着重分析一下</p><pre class="prism language-undefined">         <span class="number">0</span><span class="punctuation">:</span> aload_0
+         <span class="number">1</span><span class="punctuation">:</span> invokespecial #<span class="number">1</span>                  <span spellcheck="true" class="comment">// Method java/lang/Object.&quot;&lt;init&gt;&quot;:()V</span>
+         <span class="number">4</span><span class="punctuation">:</span> <span class="keyword">return</span></pre><p>上面的三条指令：</p><p>aload_0:这个操作码是aload格式操作码中的一个。它们用来把对象引用加载到操作码栈。 表示正在被访问的局部变量数组的位置，但只能是0、1、2、3 中的一个。还有一些其它类似的操作码用来载入非对象引用的数据，如iload, lload, float 和 dload。其中 i 表示 int，l 表示 long，f 表示 float，d 表示 double。局部变量数组位置大于 3 的局部变量可以用 iload, lload, float, dload 和 aload 载入。这些操作码都只需要一个操作数，即数组中的位置。
+invokespecial:这些操作码属于一组函数调用的操作码，包括：invokedynamic、invokeinterface、invokespecial、invokestatic、invokevirtual。在这个 class 文件中，invokespecial 和 invokevirutal 两个指令都用到了，两者的区别是，invokevirutal 指令调用一个对象的实例方法，invokespecial 指令调用实例初始化方法、私有方法、父类方法。
+return：这个操作码属于ireturn、lreturn、freturn、dreturn、areturn 和 return 操作码组。每个操作码返回一种类型的返回值，其中 i 表示 int，l 表示 long，f 表示 float，d 表示 double，a 表示 对象引用。没有前缀类型字母的 return 表示返回 void。
+对于上述的指令，都会有操作数栈来进行配合。如果操作数没用完则return ，则等待系统进行垃圾回收。若用完未取到则会跑出异常。
+详细的指令信息可以在：<a href="https://docs.oracle.com/javase/specs/jvms/se7/html/index.html">https://docs.oracle.com/javase/specs/jvms/se7/html/index.html</a>  中见到</p><p>通过上述对于class类的简要分析，我们对jvm class文件有了一定的了解。接下来将讲述详细的内容以及如何去应用。</p></div></div><div class="nav-docs"><div class="nav-docs-section"><h3>Subscribe</h3><a rel="home" type="application/rss+xml" href="/blog/rss.xml">RSS</a></div><div class="nav-docs-section"><h3>Recent Posts</h3><ul><li><a href="/blog/java-backengineering/">java 反向工程</a></li><li><a href="/blog/continous-publish/">持续发布项目</a></li><li><a href="/blog/model-engine/">java script 模版引擎初探</a></li><li>浅谈 node-jvm(2)</li><li><a href="/blog/java-jvm/">浅谈 node-jvm(1)</a></li><li><a href="/blog/java-annotation/">java 注解</a></li></ul></div></div></div></section><footer><section><a class="footer-home" href="/">MartinDelophy powered by graphql.org</a></section></footer></body></html><script>if (!this.readyState || this.readyState == "complete") { window.loadlive2d("live2d","/static/live2d-widget-model-shizuku/assets/shizuku.model.json") }</script>
